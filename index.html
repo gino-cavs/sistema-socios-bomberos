@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema Gestión de Socios - Bomberos</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; padding: 1rem; background: #f7f7f7; }
+    h1 { text-align: center; margin-bottom: 1rem; }
+    section { background: white; margin-bottom: 1rem; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    input, select, button, textarea {
+      width: 100%; padding: 0.75rem; margin-top: 0.5rem;
+      font-size: 1rem; border: 1px solid #ccc; border-radius: 4px;
+    }
+    button.btn {
+      background-color: #d32f2f; color: white; border: none;
+      cursor: pointer; margin-top: 0.5rem;
+    }
+    button.btn:hover { background-color: #b71c1c; }
+    #qr img { display: block; margin: 1rem auto; }
+    #video { width: 100%; max-width: 400px; height: auto; border-radius: 6px; }
+    #carnet {
+      background: white; padding: 1rem; border: 1px solid #ccc;
+      margin-top: 1rem; text-align: center;
+    }
+    textarea {
+      height: 150px;
+      resize: vertical;
+    }
+    @media (min-width: 768px) {
+      body { max-width: 600px; margin: auto; }
+    }
+  </style>
+</head>
+<body>
+  <h1>🚒 Sistema de Socios Bomberos</h1>
+
+  <section>
+    <h2>Crear Socio</h2>
+    <input id="nombre" placeholder="Nombre y apellido">
+    <input id="dni" placeholder="DNI">
+    <input id="numero" placeholder="Número de socio">
+    <select id="estado">
+      <option value="activo">Activo</option>
+      <option value="inactivo">Inactivo</option>
+    </select>
+    <button class="btn" onclick="registrarSocio()">Registrar</button>
+    <div id="carnet">
+      <p id="infoCarnet"></p>
+      <div id="qr"></div>
+    </div>
+    <button class="btn" onclick="descargarPDF()">Descargar PDF del Carnet</button>
+  </section>
+
+  <section>
+    <h2>Verificación (QR o Manual)</h2>
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <input id="claveManual" placeholder="Ingresar clave manual">
+    <button class="btn" onclick="verificarClaveManual()">Verificar Manual</button>
+    <button class="btn" onclick="detenerCamara()">Detener Cámara</button>
+    <div id="verificacion"></div>
+  </section>
+
+  <section>
+    <h2>Listado de Socios</h2>
+    <button class="btn" onclick="mostrarListado()">Actualizar listado</button>
+    <div id="listadoSocios"></div>
+  </section>
+
+  <section>
+    <h2>Evento</h2>
+    <input id="nombreEvento" placeholder="Indique tipo de evento">
+    <button class="btn" onclick="registrarEvento()">Registrar Evento</button>
+    <textarea id="historialEventos" readonly></textarea>
+  </section>
+
+  <script>
+    let socios = JSON.parse(localStorage.getItem("socios")) || [];
+    let eventos = JSON.parse(localStorage.getItem("eventos")) || [];
+
+    function generarClave() {
+      return 'S' + Date.now().toString(36);
+    }
+
+    function registrarSocio() {
+      const socio = {
+        nombre: nombre.value,
+        dni: dni.value,
+        numero: numero.value,
+        estado: estado.value,
+        clave: generarClave(),
+        ultima: null
+      };
+      socios.push(socio);
+      localStorage.setItem("socios", JSON.stringify(socios));
+      document.getElementById("infoCarnet").textContent =
+        `${socio.nombre} - DNI ${socio.dni} - Socio N° ${socio.numero} - Estado: ${socio.estado}
+CLAVE: ${socio.clave}`;
+      generarQR(socio.clave);
+      mostrarListado();
+    }
+
+    function generarQR(texto) {
+      const contenedor = document.getElementById("qr");
+      contenedor.innerHTML = "";
+      const qr = qrcode(0, 'L');
+      qr.addData(texto);
+      qr.make();
+      contenedor.innerHTML = qr.createImgTag(5);
+    }
+
+    function descargarPDF() {
+      html2canvas(document.querySelector("#carnet")).then(canvas => {
+        const imgData = canvas.toDataURL("image/png");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.text("Carnet Digital - Bomberos", 10, 10);
+        doc.addImage(imgData, "PNG", 10, 20, 90, 60);
+        const claveTexto = document.getElementById("infoCarnet").textContent;
+        doc.text(claveTexto, 10, 90);
+        doc.save("carnet_bomberos.pdf");
+      });
+    }
+
+    function verificarClaveManual() {
+      const clave = document.getElementById("claveManual").value;
+      verificarClave(clave);
+    }
+
+    function verificarClave(clave) {
+      const socio = socios.find(s => s.clave === clave);
+      if (socio) {
+        socio.ultima = new Date().toLocaleString();
+        localStorage.setItem("socios", JSON.stringify(socios));
+        document.getElementById("verificacion").innerHTML =
+          `<p>✅ ${socio.nombre} - Estado: ${socio.estado}</p>`;
+        mostrarListado();
+      } else {
+        document.getElementById("verificacion").innerHTML =
+          `<p>❌ Clave no encontrada: ${clave}</p>`;
+      }
+    }
+
+    function mostrarListado() {
+      socios.sort((a, b) => parseInt(a.numero) - parseInt(b.numero));
+      const contenedor = document.getElementById("listadoSocios");
+      contenedor.innerHTML = "";
+      socios.forEach(s => {
+        const div = document.createElement("div");
+        div.style.marginBottom = "1.5rem";
+        const datos = document.createElement("p");
+        datos.textContent = `${s.nombre} | DNI: ${s.dni} | Nº: ${s.numero} | Estado: ${s.estado} | Clave: ${s.clave} | Última: ${s.ultima || 'Nunca'}`;
+        const qr = qrcode(0, 'L');
+        qr.addData(s.clave);
+        qr.make();
+        const qrHTML = qr.createImgTag(4);
+        div.appendChild(datos);
+        div.innerHTML += qrHTML;
+        contenedor.appendChild(div);
+      });
+    }
+
+    function registrarEvento() {
+      const nombre = document.getElementById("nombreEvento").value.trim();
+      if (!nombre) return alert("Debes ingresar un tipo de evento.");
+      const fecha = new Date().toLocaleString();
+      const registro = `${nombre} - ${fecha}`;
+      eventos.push(registro);
+      localStorage.setItem("eventos", JSON.stringify(eventos));
+      mostrarEventos();
+      document.getElementById("nombreEvento").value = "";
+    }
+
+    function mostrarEventos() {
+      document.getElementById("historialEventos").value = eventos.join("\n");
+    }
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let stream;
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(s => {
+        stream = s;
+        video.srcObject = s;
+        video.setAttribute("playsinline", true);
+        video.play();
+        scan();
+      }).catch(() => {
+        document.getElementById("verificacion").textContent = "No se pudo acceder a la cámara.";
+      });
+
+    function scan() {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, canvas.width, canvas.height);
+        if (code) verificarClave(code.data);
+      }
+      requestAnimationFrame(scan);
+    }
+
+    function detenerCamara() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    }
+
+    window.onload = () => {
+      mostrarListado();
+      mostrarEventos();
+    };
+  </script>
+</body>
+</html>
