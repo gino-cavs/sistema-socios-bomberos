@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema Gestión de Socios - Bomberos</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; padding: 1rem; background: #f7f7f7; }
+    h1 { text-align: center; margin-bottom: 1rem; }
+    section { background: white; margin-bottom: 1rem; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    input, select, button, textarea {
+      width: 100%; padding: 0.75rem; margin-top: 0.5rem;
+      font-size: 1rem; border: 1px solid #ccc; border-radius: 4px;
+    }
+    button.btn {
+      background-color: #d32f2f; color: white; border: none;
+      cursor: pointer; margin-top: 0.5rem;
+    }
+    button.btn:hover { background-color: #b71c1c; }
+    #qr canvas { display: block; margin: 1rem auto; }
+    #video { width: 100%; max-width: 400px; height: auto; border-radius: 6px; }
+    #carnet {
+      background: white; padding: 1rem; border: 1px solid #ccc;
+      margin-top: 1rem; text-align: center;
+    }
+    textarea {
+      height: 150px;
+      resize: vertical;
+    }
+    @media (min-width: 768px) {
+      body { max-width: 600px; margin: auto; }
+    }
+  </style>
+</head>
+<body>
+<!-- ... HTML unchanged ... -->
+
+<script>
+window.onload = function () {
+  let socios = JSON.parse(localStorage.getItem("socios")) || [];
+  let eventos = JSON.parse(localStorage.getItem("eventos")) || [];
+  let video = document.getElementById("video");
+  let canvas = document.getElementById("canvas");
+  let ctx = canvas.getContext("2d");
+  let stream = null;
+  let escaneoActivo = true;
+
+  function generarQR(texto) {
+    const contenedor = document.getElementById("qr");
+    contenedor.innerHTML = "";
+    const qr = qrcode(0, 'L');
+    qr.addData(texto);
+    qr.make();
+    const qrCanvas = qr.createCanvasTag(5);
+    contenedor.innerHTML = qrCanvas;
+  }
+
+  function escanearQR() {
+    if (!escaneoActivo || !stream || video.videoWidth === 0) return requestAnimationFrame(escanearQR);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, canvas.width, canvas.height);
+    if (code) {
+      console.log("QR Detectado:", code.data);
+      verificarClave(code.data);
+    }
+    requestAnimationFrame(escanearQR);
+  }
+
+  function iniciarCamara() {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => {
+      stream = s;
+      video.srcObject = stream;
+      video.setAttribute("playsinline", true);
+      video.onloadedmetadata = () => {
+        video.play();
+        escanearQR();
+      };
+    }).catch(err => console.error("Error accediendo a la cámara", err));
+  }
+
+  iniciarCamara();
+  actualizarHistorialEventos();
+  mostrarListado();
+};
+</script>
+</body>
+</html>
